@@ -1,0 +1,150 @@
+import groovy.json.JsonSlurper
+import java.util.Map;
+ 
+def issueKey =issue.key//"PDJ-372"
+logger.info "issuekey:"+issueKey
+def  keyInici = Valorissue(issueKey)
+logger.info "KeyInici:"+keyInici
+String cfAvnceReal = "customfield_10184"
+def enlacePadre = lecturaSubtarea(keyInici)
+logger.info "enlacePadre: "+ enlacePadre
+String avanceReal = sumaAvance(enlacePadre, cfAvnceReal)
+
+editarValorCampo(keyInici, "customfield_10184", avanceReal)
+ 
+ 
+ String lecturaSubtarea(def issue2){
+   
+   String allSubtasks = get("/rest/api/2/search").queryString("jql", "parent=${issue2}").asObject(Map).body['issues']['key']  
+   allSubtasks =  allSubtasks.replace("[","").replace("]","").replace(" ","")
+   logger.info "allSubtasks: "+ allSubtasks
+       
+    return allSubtasks
+}
+//**********************************************************************************************************************************************************************************//
+//                                                              Metodos                                                                                             //
+//**********************************************************************************************************************************************************************************//
+def editarValorCampo(def issue2, def campo, def valor){
+ 
+    put("/rest/api/2/issue/${issue2}") 
+       .queryString("overrideScreenSecurity", Boolean.TRUE) 
+        .header("Content-Type", "application/json")
+        .body([
+            fields:[
+               (campo): valor
+            ]
+        ])
+        .asString()
+}
+ 
+ 
+int sumaAvance(def enlacePadre, def campo ){
+    String aux = enlacePadre, estado
+    String [] enlace = aux.split(",");
+    Double contador = 0, auxValor
+    def valor
+ 
+    for(int i=0;i<enlace.size();i++){
+            enlace[i] = enlace[i].replace(" ","")
+            estado = obtenerEstadoIssue(enlace[i])
+            logger.info "estado: "+ estado
+                valor = obtenerValorCampo(enlace[i],campo as String)
+                logger.info "valor: "+ valor
+                if (valor == null){
+                    valor = 0
+                }
+                auxValor = valor as double 
+                contador = contador + auxValor
+    }
+    logger.info "contador1: "+ contador
+    contador = contador/enlace.size()
+    logger.info "contador2: "+ contador
+    return contador
+}
+ 
+def Valorissue (def issue){
+    def    enlacePadre = traeEnlacedeIncidenciaSaliente(issue)
+    logger.info "enlacepadre:"+enlacePadre
+    String aux = enlacePadre, issueini
+    String [] enlace = aux.split(",")
+    def    estado, nombreIssueInici, nombreIssueEpica, estadoIssueEpic, banderaEpic=0;
+ 
+    for(int i=0;i<enlace.size();i++){
+            enlace[i] = enlace[i].replace(" ","")
+            estado = obtenerEstadoIssue(enlace[i])
+            nombreIssueInici = obtenerNombreTipoIssue (enlace[i])
+            logger.info "Nombretipoissue:"+nombreIssueInici
+            if(nombreIssueInici == "Epica"){
+                 return enlace[i]
+            }
+    }
+ 
+}
+ 
+def obtenerValorCampo (def issue2, String campo){
+    def jsonFields = get("/rest/api/2/issue/${issue2}").asObject(Map).body
+    return jsonFields['fields'][campo]
+}
+ 
+ 
+def moverTrancision(def issue2, def idTrans){
+ 
+         def resp = post("/rest/api/2/issue/${issue2}/transitions")
+                   .header("Content-Type", "application/json")
+                   .body([
+                    transition: [
+                            id: idTrans
+                    ]
+            ])
+                    .asString()	
+}
+ 
+def traeEnlacedeIncidenciaSaliente(def myIssue ) {       
+        def enlaces
+        def keyCasoPrueba
+        def result1 = get("/rest/api/2/issue/${myIssue}")
+        .header('Accept', 'application/json')
+        .asObject(Map)
+        enlaces = result1.body.fields.issuelinks.outwardIssue
+        keyCasoPrueba = enlaces.key.toString().replace("[","").replace("]","")
+        //logger.info "Nombre de Issue: "+ obtenerNombreTipoIssue (keyCasoPrueba)
+    return keyCasoPrueba
+}
+ 
+def traeEnlacedeIncidenciaEntrante(def issue ) {       
+    def enlaces
+    def keyCasoPrueba  
+    def result1 = get("/rest/api/2/issue/${issue}")
+        .header('Accept', 'application/json')
+        .asObject(Map)
+ 
+        enlaces = result1.body.fields.issuelinks.inwardIssue
+        keyCasoPrueba = enlaces.key.toString().replace("[","").replace("]","")
+    return keyCasoPrueba
+ 
+}
+def obtenerNombreTipoIssue (def issue2){
+    String jsonFields = get("/rest/api/2/issue/${issue2}")
+    .asString()
+    .body
+    JsonSlurper jsonSlurperFields = new JsonSlurper();
+    Object resultFields = jsonSlurperFields.parseText(jsonFields);
+    Map jsonResultFields = (Map) resultFields;
+    Map fields = (Map) jsonResultFields.get("fields")
+    Map status = (Map) fields.get("issuetype")
+    def value = status.get("name")
+    return value
+}
+ 
+def obtenerEstadoIssue (def issue2){
+    String jsonFields = get("/rest/api/2/issue/${issue2}")
+    .asString()
+    .body
+    JsonSlurper jsonSlurperFields = new JsonSlurper();
+    Object resultFields = jsonSlurperFields.parseText(jsonFields);
+    Map jsonResultFields = (Map) resultFields;
+    Map fields = (Map) jsonResultFields.get("fields")
+    Map status = (Map) fields.get("status")
+    def value = status.get("name")
+    return value
+}
